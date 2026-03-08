@@ -105,6 +105,7 @@ async function getLatestRaceSessionKey(year) {
   let sessions = readCache(cacheKey)
   if (!sessions) {
     sessions = await fetchJson(`${API}/sessions?year=${year}&session_type=Race`)
+    // Cache race sessions — short TTL for current year so new races are picked up
     if (sessions.length) writeCache(cacheKey, sessions, getCacheTTL(year))
   }
   const now = new Date().toISOString()
@@ -126,9 +127,8 @@ async function loadData(year) {
     drivers = await fetchJson(`${API}/drivers?session_key=${sessionKey}`)
     standings = await fetchJson(`${API}/championship_drivers?session_key=${sessionKey}`)
   } else {
-    // No races yet — grab driver list from any session this year (practice, quali, etc.)
-    const allSessions = readCache(`sessions_${year}`) ||
-      await fetchJson(`${API}/sessions?year=${year}`)
+    // No races yet — grab driver list from any session this year
+    const allSessions = await fetchJson(`${API}/sessions?year=${year}`)
     if (!allSessions.length) return null
 
     const now = new Date().toISOString()
