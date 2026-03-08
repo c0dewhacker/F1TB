@@ -1,0 +1,34 @@
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface-2: #222;
+  --border: #2a2a2a;
+  --text: #f0f0f0;
+  --text-muted: #777;
+  --red: #e10600;
+  --red-dim: rgba(225, 6, 0, 0.15);
+  --green: #00d747;
+  --radius: 12px;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--red);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
