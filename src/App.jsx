@@ -40,7 +40,7 @@ function getCarImageUrl(teamName, year) {
 
 // Rate-limited fetch: max 2 req/s to stay under the 3/s API limit
 let lastFetchTime = 0
-const MIN_INTERVAL = 550 // ms between requests
+const MIN_INTERVAL = 700 // ms between requests
 
 class SessionLiveError extends Error {
   constructor() {
@@ -103,15 +103,24 @@ function writeCache(key, data, ttl) {
 async function getLatestRaceSessionKey(year) {
   const cacheKey = `sessions_${year}`
   let sessions = readCache(cacheKey)
+  
   if (!sessions) {
     sessions = await fetchJson(`${API}/sessions?year=${year}&session_type=Race`)
-    // Cache race sessions — short TTL for current year so new races are picked up
     if (sessions.length) writeCache(cacheKey, sessions, getCacheTTL(year))
   }
+
   const now = new Date().toISOString()
-  const past = sessions.filter(s => s.date_start < now)
-  if (past.length === 0) return null
-  return past[past.length - 1].session_key
+  
+  // Update: Filter out cancelled races and ensure they have started
+  const validPastSessions = sessions.filter(s => 
+    !s.is_cancelled && 
+    s.date_start < now
+  )
+
+  if (validPastSessions.length === 0) return null
+  
+  // Return the most recent valid session key
+  return validPastSessions[validPastSessions.length - 1].session_key
 }
 
 async function loadData(year) {
@@ -120,34 +129,38 @@ async function loadData(year) {
 
   const sessionKey = await getLatestRaceSessionKey(year)
 
-  // Fetch driver roster — from race session if available, otherwise latest session for the year
   let drivers, standings
 
   if (sessionKey) {
     drivers = await fetchJson(`${API}/drivers?session_key=${sessionKey}`)
     standings = await fetchJson(`${API}/championship_drivers?session_key=${sessionKey}`)
   } else {
-    // No races yet — grab driver list from any session this year
     const allSessions = await fetchJson(`${API}/sessions?year=${year}`)
     if (!allSessions.length) return null
 
     const now = new Date().toISOString()
-    const pastSessions = allSessions.filter(s => s.date_start < now)
+    
+    // Filter out cancelled sessions here as well
+    const pastSessions = allSessions.filter(s => !s.is_cancelled && s.date_start < now)
+    
     const sessionToUse = pastSessions.length
       ? pastSessions[pastSessions.length - 1]
-      : allSessions[0]
+      : allSessions.find(s => !s.is_cancelled) || allSessions[0]
 
     drivers = await fetchJson(`${API}/drivers?session_key=${sessionToUse.session_key}`)
-    standings = [] // no championship data yet
+    standings = [] 
   }
 
   if (!drivers.length) return null
 
-  const pointsMap = {}
+const pointsMap = {}
   const posMap = {}
+  
   for (const s of standings) {
-    pointsMap[s.driver_number] = s.points_current
-    posMap[s.driver_number] = s.position_current
+    // Explicitly cast to String to ensure the key matches the driver data
+    const dNum = String(s.driver_number) 
+    pointsMap[dNum] = s.points_current
+    posMap[dNum] = s.position_current
   }
 
   const seen = new Set()
@@ -159,19 +172,23 @@ async function loadData(year) {
     }
   }
 
-  const teams = {}
+const teams = {}
   for (const d of uniqueDrivers) {
     const team = d.team_name
+    const dNum = String(d.driver_number) // Cast here too
+    
     if (!teams[team]) {
       teams[team] = { name: team, colour: d.team_colour, drivers: [] }
     }
+    
     teams[team].drivers.push({
       number: d.driver_number,
       name: `${d.first_name} ${d.last_name}`,
       acronym: d.name_acronym,
       headshot: d.headshot_url,
-      points: pointsMap[d.driver_number] ?? 0,
-      position: posMap[d.driver_number] ?? 99,
+      // Lookup using the guaranteed string key
+      points: pointsMap[dNum] ?? 0,
+      position: posMap[dNum] ?? 99,
       teamColour: d.team_colour,
     })
   }
